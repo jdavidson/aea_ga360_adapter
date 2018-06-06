@@ -7,15 +7,14 @@ explore: ga_sessions_block {
   always_filter: {
     filters: {
       field: ga_sessions.partition_date
-      value: "7 days ago for 7 days"
+      value: "365 days ago for 365 days"
       ## Partition Date should always be set to a recent date to avoid runaway queries
     }
   }
 }
 
 view: ga_sessions {
-  extends: [ga_sessions_base]
-  sql_table_name: `bigquery-public-data.google_analytics_sample.ga_sessions_*` ;;
+  extends: [ga_sessions_base, ga360_config]
 }
 
 view: geoNetwork {
