@@ -124,7 +124,7 @@ explore: ga_sessions_base {
   }
   join: user_session_facts {
     view_label: "User Session Facts"
-    sql_on: ${user_session_facts.ga_sessions_fullvisitorid} = ${ga_sessions.fullVisitorId} ;;
+    sql_on: ${user_session_facts.full_visitor_id} = ${ga_sessions.fullVisitorId} ;;
     relationship: one_to_one
   }
 }
@@ -391,11 +391,13 @@ view: totals_base {
     type: sum
     sql: ${transactions} ;;
   }
+
+
   measure: transactionRevenue_total {
     label: "Transaction Revenue Total"
     type: sum
     sql: (${TABLE}.transactionRevenue/1000000) ;;
-    value_format_name: usd_0
+    value_format_name: usd_large
     drill_fields: [transactions_count, transactionRevenue_total]
   }
 
@@ -416,6 +418,19 @@ view: totals_base {
     sql: 1.0 * (${transactionRevenue_total}/NULLIF(${ga_sessions.unique_visitors},0)) ;;
     value_format_name: usd
   }
+
+  measure: average_transactions_per_user {
+    type: number
+    sql: 1.0 * (${transactions_count}/NULLIF(${ga_sessions.unique_visitors},0)) ;;
+    value_format_name: decimal_2
+  }
+
+  measure: average_sessions_per_user {
+    type: number
+    sql: 1.0 * (${ga_sessions.session_count}/NULLIF(${ga_sessions.unique_visitors},0)) ;;
+    value_format_name: decimal_2
+  }
+
 
   measure: newVisits_total {
     label: "New Visits Total"
@@ -923,10 +938,57 @@ view: hits_eventInfo_base {
 view: hits_product_base {
   extension: required
   dimension: productSKU {}
-  dimension: v2ProductName {}
-  dimension: productRevenue {type:number}
+  dimension: v2ProductName {label: "Product Name"}
+  dimension: productRevenue {type:number label:"Product Revenue"}
 
-  measure: total_product_revenue {type:sum sql: ${productRevenue} ;;}
+  dimension: v2ProductCategory {
+    label:"Product Category"
+  }
+
+  dimension: productVariant {
+    label:"Product Variant"
+  }
+
+  dimension: productBrand {
+    label:"Product Brand"
+  }
+
+  dimension: localProductRevenue {
+    type: number
+    label:"Product Revenue (Local Currency)"
+  }
+
+  dimension: productPrice {
+    type: number
+    label:"Product Price"
+  }
+
+  dimension: localProductPrice {
+    type: number
+    label:"Product Price (Local Currency)"
+  }
+
+  dimension: ProductQuantity {
+    type: number
+    label:"Product Quantity"
+  }
+
+  dimension: productRefundAmount {
+    type: number
+    label:"Product Refund Amount"
+  }
+
+  dimension: isImpression {
+    type: yesno
+    label:"Is Impression"
+  }
+
+  dimension: isClick {
+    type: yesno
+    label:"Is Click"
+  }
+
+  measure: total_product_revenue {type:sum sql: (1.0 * (${productRevenue}/1000000)) ;; value_format_name:usd_large}
 }
 
 
@@ -941,7 +1003,7 @@ view: hits_product_base {
 view: user_session_facts {
   derived_table: {
     sql: SELECT
-        ga_sessions.fullVisitorId AS ga_sessions_fullvisitorid,
+        ga_sessions.fullVisitorId AS fullvisitorid,
         min(TIMESTAMP_SECONDS(visitStartTime)) as first_start_date,
         max(TIMESTAMP_SECONDS(visitStartTime)) as latest_start_date,
         COUNT(*) AS lifetime_sessions,
@@ -951,32 +1013,36 @@ view: user_session_facts {
         (date_diff(max(date(TIMESTAMP_SECONDS(visitStartTime))), min(date(TIMESTAMP_SECONDS(visitStartTime))), week)+1) as weeks_active,
         date_diff(CURRENT_DATE, min(date(TIMESTAMP_SECONDS(visitStartTime))), day) as days_since_first_session
       FROM `bigquery-public-data.google_analytics_sample.ga_sessions_*` as ga_sessions
+      LEFT JOIN UNNEST([ga_sessions.trafficSource]) as trafficSource
+      LEFT JOIN UNNEST(ga_sessions.hits) as hits
       GROUP BY 1
        ;;
   }
 
 
-
-  dimension: ga_sessions_fullvisitorid {
-    primary_key: yes
+  dimension: full_visitor_id {
     hidden: yes
+    primary_key: yes
     type: string
-    sql: ${TABLE}.ga_sessions_fullvisitorid ;;
+    sql: ${TABLE}.fullvisitorid ;;
   }
 
-  dimension_group: first_start_date {
+  dimension_group: first_start {
     type: time
     sql: ${TABLE}.first_start_date ;;
+    timeframes: [date, week, month]
   }
 
   dimension_group: latest_start_date {
     type: time
     sql: ${TABLE}.latest_start_date ;;
+    hidden: yes
   }
 
-  dimension: lifetime_sessions {
-    type: number
+  measure: lifetime_sessions {
+    type: sum
     sql: ${TABLE}.lifetime_sessions ;;
+    hidden:  yes
   }
 
   dimension: days_active {
@@ -989,14 +1055,21 @@ view: user_session_facts {
     sql: ${TABLE}.weeks_active ;;
   }
 
+  dimension: lifetime_transaction_revenue {
+    type: number
+    sql: ${TABLE}.lifetime_transaction_revenue ;;
+    hidden: yes
+  }
+
   dimension: days_since_first_session {
     type: number
     sql: ${TABLE}.days_since_first_session ;;
   }
 
-  dimension: lifetime_transaction_revenue {
-    type: number
-    sql: ${TABLE}.lifetime_transaction_revenue ;;
+  measure: lifetime_transaction_revenue_total {
+    type: sum
+    sql: ${lifetime_transaction_revenue} ;;
+#     hidden:  yes
   }
 
   dimension: lifetime_transaction_revenue_tier {
@@ -1007,16 +1080,16 @@ view: user_session_facts {
     value_format_name: usd_0
   }
 
-  dimension: lifetime_transaction_count {
-    type: number
-    sql: ${lifetime_transaction_revenue} ;;
-
+  measure: lifetime_transaction_count {
+    type: sum
+    sql: ${TABLE}.lifetime_transaction_revenue ;;
+    value_format_name: decimal_0
+#     hidden:  yes
   }
+
 
   set: detail {
     fields: [
-      ga_sessions_fullvisitorid,
-      first_start_date_time,
       latest_start_date_time,
       lifetime_sessions,
       days_active,
